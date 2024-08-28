@@ -1,23 +1,20 @@
 import express from "express";
 import cors from "cors";
 import bodyParser from "body-parser";
-
-import { APP_CONSTANT } from "./common/constant/app.constant";
-
-import { LoggerService } from "./utils/logger.util";
-import { errorHandler } from "./middleware/error.middleware";
-import { AppModule } from "./app.module";
-import { connectDb } from "./utils/db.util";
+import { z } from "zod";
+import { ENV } from "./utils/env.util";
+import { protect } from "./middleware/protect.middleware";
+import { authRoutes } from "./modules/auth/auth.route";
+import { userRoutes } from "./modules/user/user.route";
 
 const app = express();
+app.use(express.json());
 
-app.use(bodyParser.json());
 app.use(cors());
+app.use(bodyParser.json());
+app.use("/", authRoutes);
+app.use("/", userRoutes);
 
-AppModule.init(app);
-app.use(errorHandler);
-
-app.listen(APP_CONSTANT.PORT, async () => {
-  await connectDb();
-  LoggerService().log(APP_CONSTANT.BOOTSTRAP_MESSAGE);
+app.listen(ENV.PORT, () => {
+  console.log(`Application running at http://localhost:${ENV.PORT}`);
 });

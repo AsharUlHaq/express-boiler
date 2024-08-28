@@ -1,27 +1,37 @@
-import type { Prisma } from "@prisma/client";
-import { prisma } from "../../utils/db.util";
-import { commonService } from "../common/common.service";
+import prisma from "../../utils/db.util";
+import { Prisma } from "@prisma/client";
 
-class UserService {
-  async findOneById(id: number, select?: Prisma.UserSelect) {
-    return prisma.user.findUnique({ where: { id }, select });
-  }
-
-  async findUnique(args: Prisma.UserFindUniqueArgs) {
-    return prisma.user.findUnique(args);
-  }
-
-  async findMany(args: Prisma.UserFindManyArgs) {
-    return prisma.user.findMany(args);
-  }
-
-  async create(args: Prisma.UserCreateArgs) {
-    return prisma.user.create(args);
-  }
-
-  async update(args: Prisma.UserUpdateArgs) {
-    return prisma.user.update(args);
+export async function findUserById(id: number) {
+  try {
+    const userId = await prisma.user.findUnique({ where: { id } });
+    if (!userId) throw new Error(`User at id:${id} not exist`);
+    return userId;
+  } catch (error: any) {
+    return error.message;
   }
 }
 
-export const userService = commonService.getOrCreateSingleton(UserService);
+export async function findUserByEmail(email: string) {
+  const user = await prisma.user.findUnique({ where: { email: email } });
+  if (!user) {
+    throw new Error(`user with this email: ${email} does not exist`);
+  }
+  return user;
+}
+
+export async function getLoggedInUser(userId: number) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      username: true,
+      createdAt: true,
+      updatedAt: true,
+    },
+  });
+  if (!user) {
+    throw new Error("user not found");
+  }
+  return user;
+}

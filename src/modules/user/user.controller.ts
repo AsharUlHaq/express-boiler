@@ -1,66 +1,22 @@
-import type { Request } from "express";
-import type { UserSchema, UserSchemaTypes } from "./user.schema.ts";
-import { LoggerService } from "../../utils/logger.util";
-import { commonService } from "../common/common.service";
-import { ResponseMapper } from "../../common/mapper/response.mapper";
-import { userService } from "./user.service";
-import { jwtService } from "../jwt/jwt.service";
-import { JWT_TYPE } from "../jwt/enum/jwt.enum";
-import { BadRequestException } from "../../utils/exception.util";
+import { Request, Response } from "express";
+import prisma from "../../utils/db.util";
+import { getLoggedInUser } from "./user.service";
 
-class UserController {
-  private readonly logger = LoggerService(UserController.name);
-
-  async getUserDetailHandler(req: Request) {
-    try {
-      const userId = req.userId;
-      const user = (await userService.findOneById(userId))!;
-      const userWithoutPassword = commonService.exclude(user, ["password"]);
-
-      const refreshToken = await jwtService.signPayload(
-        userWithoutPassword,
-        JWT_TYPE.REFRESH
-      );
-
-      return ResponseMapper.map({
-        data: { user: userWithoutPassword, refreshToken },
+export async function getLoggedInUserController(req: Request, res: Response) {
+  try {
+    const userId = (req as any).userId;
+    const user = await getLoggedInUser(userId);
+    return res
+      .status(200)
+      .json({ status: 200, message: "success", data: user, success: true });
+  } catch (error: any) {
+    return res
+      .status(400)
+      .json({
+        status: 400,
+        message: error.message,
+        data: null,
+        success: false,
       });
-    } catch (error: any) {
-      this.logger.error(error.message);
-      throw error;
-    }
-  }
-
-  async updateHandler(req: Request) {
-    try {
-      const body = req.body as UserSchemaTypes.Update;
-      const user = (await userService.findOneById(req.userId))!;
-
-      let password = user.password;
-      if (body.passwordData) {
-        if (body.passwordData.oldPassword === user.password)
-          throw new BadRequestException("Incorrect password");
-        if (body.passwordData.password != body.passwordData.confirmPassword)
-          throw new BadRequestException("Password not match");
-
-        password = body.passwordData.password;
-      }
-
-      user["username"] = body.username ?? user.username;
-      user["password"] = password;
-
-      await userService.update({
-        data: commonService.exclude(user, ["updatedAt"]),
-        where: { id: req.userId },
-      });
-
-      return ResponseMapper.map();
-    } catch (error: any) {
-      this.logger.error(error.message);
-      throw error;
-    }
   }
 }
-
-export const userController =
-  commonService.getOrCreateSingleton(UserController);
