@@ -1,66 +1,94 @@
 import { Request, Response } from "express";
-import { ZodError } from "zod";
-import { ENV } from "../../utils/env.util";
-import { sign } from "jsonwebtoken";
+import { ZodError, ZodIssueCode } from "zod";
 import { userSignInSchema, userSignUpSchema } from "./auth.schema";
-import { signUp } from "./auth.service";
-import { findUserByEmail } from "../user/user.service";
-import bcrypt from "bcrypt";
-import { Prisma } from "@prisma/client";
+import { loginUser, signUp, findUserByEmail } from "./auth.service";
+import { sendOtpToEmail } from "../otp/otp.service";
 
 export async function signUpUserHandler(req: Request, res: Response) {
   try {
-    const data = userSignUpSchema.parse(req.body);
-    const existingEmail = await findUserByEmail(data.email);
-    if (existingEmail) throw new Error(`Email must be unique`);
-    const salt = await bcrypt.genSalt();
-    data.password = await bcrypt.hash(req.body.password, salt);
-    const user = await signUp(data);
-    res
-      .status(200)
-      .json({ status: 200, message: "Success", data: null, success: true });
-  } catch (error: any) {
-    if (error instanceof ZodError) {
-      const messageJSON = JSON.parse(error.message);
-      const message = `${messageJSON[0].path[0]} is ${messageJSON[0].message}`;
-      console.error(message);
-      return res.status(400).json({
-        status: 400,
-        message: message,
+    const data = userSignUpSchema.parse({
+      ...req.body,
+      phone: req.body.phone.toString(),
+    });
+
+    const existingUser = await findUserByEmail(data.email);
+    if (existingUser) {
+      return res.status(409).json({
+        status: 409,
+        message: "Email already in use",
         data: null,
         success: false,
       });
     }
+
+    const user = await signUp(data);
+
+    // Send OTP to user's email
+    await sendOtpToEmail(user.email);
+
+    return res.status(201).json({
+      status: 201,
+      message: "User created successfully. OTP sent to email for verification.",
+      data: {
+        id: user.id,
+        email: user.email,
+      },
+      success: true,
+    });
+  } catch (error: any) {
+    if (error instanceof ZodError) {
+      return res.status(400).json({
+        status: 400,
+        message: `${error.errors[0].path[0]} is ${error.errors[0].message}`,
+        data: null,
+        success: false,
+      });
+    }
+
+    return res.status(500).json({
+      status: 500,
+      message: error.message || "Internal server error",
+      data: null,
+      success: false,
+    });
   }
 }
 
 export async function signInUserHandler(req: Request, res: Response) {
   try {
     const data = userSignInSchema.parse(req.body);
-    const user = await findUserByEmail(data.email);
-    if (!user) {
-      throw new Error("user not found");
-    }
-    const comparison = await bcrypt.compare(data.password, user.password);
-    if (!comparison) {
-      throw new Error("Invalid credentials...");
-    }
-    const { password, ...rest } = user;
-    const token = sign(rest, ENV.JWT_SECRET, { expiresIn: "1d" });
+
+    const result = await loginUser(data);
+
     return res.status(200).json({
       status: 200,
-      message: "success",
-      data: { ...rest, token },
+      message: "Login successful",
+      data: result,
       success: true,
     });
   } catch (error: any) {
     if (error instanceof ZodError) {
-      const messageJSON = JSON.parse(error.message);
-      const message = `${messageJSON[0].path[0]} is ${messageJSON[0].message}`;
-      console.error(message);
-      return res
-        .status(400)
-        .json({ status: 400, message: message, data: null, success: false });
+      const unrecognized = error.errors.find(
+        (e) => e.code === ZodIssueCode.unrecognized_keys
+      );
+
+      const message = unrecognized
+        ? "Only email and password are allowed in the login request"
+        : `${error.errors[0].path[0]} is ${error.errors[0].message}`;
+
+      return res.status(400).json({
+        status: 400,
+        message,
+        data: null,
+        success: false,
+      });
     }
+
+    return res.status(401).json({
+      status: 401,
+      message: error.message || "Authentication failed",
+      data: null,
+      success: false,
+    });
   }
 }

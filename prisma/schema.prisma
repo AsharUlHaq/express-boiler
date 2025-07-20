@@ -1,3 +1,5 @@
+// schema.prisma
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -7,17 +9,175 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserRole {
-  ADMIN
-  USER
-}
+// ========== MODELS ==========
 
 model User {
-  id        Int      @id @default(autoincrement())
+  id                      String           @id @default(uuid())
+  name                    String
+  email                   String           @unique
+  phone                   String           @unique
+  password                String
+  role                    Role             @default(VICTIM)
+  city                    String?
+  country                 String?
+  emailVerified           Boolean          @default(false)     // ✅ New: Track email verification
+  otp                     String?                               // ✅ New: Store last sent OTP (optional)
+  otpExpiresAt            DateTime?                            // ✅ New: Expiry of OTP (optional)
+  wallet                  Wallet?
+  averageRating           Float?
+  feedbackGiven           Feedback[]       @relation("FeedbackByUser")
+  feedbackReceived        Feedback[]       @relation("FeedbackForUser")
+  emergencyContacts       EmergencyContact[]
+  victimRequests          EmergencyRequest[] @relation("VictimRequests")
+  driverRequests          EmergencyRequest[] @relation("DriverResponses")
+  transactionsSent        Transaction[]    @relation("TransactionFrom")
+  transactionsReceived    Transaction[]    @relation("TransactionTo")
+  driverVerification      DriverVerification?
+  isVerified    Boolean  @default(false)
+  otpLogs                 OTPLog[]                              // ✅ New: Relation to OTP log table
+  createdAt               DateTime         @default(now())
+  updatedAt               DateTime         @updatedAt
+}
+model Wallet {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  balance   Float    @default(0)
+  user      User     @relation(fields: [userId], references: [id])
+  updatedAt DateTime @updatedAt
+  logs      WalletLog[]
+}
+
+model WalletLog {
+  id          String   @id @default(uuid())
+  walletId    String
+  amount      Float
+  type        String // "CREDIT" or "DEBIT"
+  reference   String? // Optional: transaction id
+  reason      String? // Description (e.g., "Emergency Ride Payment")
+  createdAt   DateTime @default(now())
+
+  wallet      Wallet   @relation(fields: [walletId], references: [id])
+}
+
+
+model EmergencyRequest {
+  id            String         @id @default(uuid())
+  victimId      String
+  driverId      String?
+  hospitalId    String?
+  status        RequestStatus  @default(PENDING)
+  distanceKM    Float?
+  amount        Float?
+  locationLat   Float
+  locationLng   Float
+  arrivedAt     DateTime?      // ✅ New: driver reached
+  completedAt   DateTime?      // ✅ New: assistance completed
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  victim        User           @relation("VictimRequests", fields: [victimId], references: [id])
+  driver        User?          @relation("DriverResponses", fields: [driverId], references: [id])
+  hospital      Hospital?      @relation(fields: [hospitalId], references: [id])
+}
+
+model Transaction {
+  id             String   @id @default(uuid())
+  fromUserId     String
+  toUserId       String
+  amount         Float
+  distanceKM     Float
+  petrolPrice    Float
+  createdAt      DateTime @default(now())
+
+  fromUser       User     @relation("TransactionFrom", fields: [fromUserId], references: [id])
+  toUser         User     @relation("TransactionTo", fields: [toUserId], references: [id])
+}
+
+model Feedback {
+  id          String   @id @default(uuid())
+  fromUserId  String
+  toUserId    String
+  rating      Int
+  comments    String?
+  createdAt   DateTime @default(now())
+
+  fromUser    User     @relation("FeedbackByUser", fields: [fromUserId], references: [id])
+  toUser      User     @relation("FeedbackForUser", fields: [toUserId], references: [id])
+}
+
+model Hospital {
+  id        String   @id @default(uuid())
+  name      String
+  address   String
+  locationLat Float
+  locationLng Float
+  phone     String
+  approved  Boolean  @default(false)
   createdAt DateTime @default(now())
-  updatedAt DateTime @default(now()) @updatedAt
-  username  String
-  email     String   @unique
-  password  String
-  role      UserRole @default(USER)
+
+  EmergencyRequest EmergencyRequest[]
+}
+
+model EmergencyContact {
+  id        String   @id @default(uuid())
+  userId    String
+  name      String
+  relation  String
+  phone     String
+  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model DriverVerification {
+  id                String   @id @default(uuid())
+  userId            String   @unique
+  cnic              String
+  cnicImageUrl      String
+  licenseNumber     String
+  licenseImageUrl   String
+  vehicleType       String
+  vehicleNumber     String
+  vehicleColor      String
+  vehicleImageFront String
+  vehicleImageBack  String
+  vehicleImageLeft  String
+  vehicleImageRight String
+  status            VerificationStatus @default(PENDING)
+  rejectionReason   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  user              User     @relation(fields: [userId], references: [id])
+}
+
+model OTPLog {
+  id        String   @id @default(uuid())
+  userId    String
+  otp       String
+  expiresAt DateTime
+  verified  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+}
+// ========== ENUMS ==========
+
+enum Role {
+  ADMIN
+  DRIVER
+  VICTIM
+}
+
+enum RequestStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  COMPLETED
+  IN_PROGRESS // ✅ New: to track real-time driver movement
+  CANCELLED   
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
 }

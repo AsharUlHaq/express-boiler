@@ -1,37 +1,39 @@
 import prisma from "../../utils/db.util";
 import { Prisma } from "@prisma/client";
 
-export async function findUserById(id: number) {
+export async function findUserById(id: string) {
   try {
-    const userId = await prisma.user.findUnique({ where: { id } });
-    if (!userId) throw new Error(`User at id:${id} not exist`);
-    return userId;
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) throw new Error(`User with id:${id} does not exist`);
+    return user;
   } catch (error: any) {
     return error.message;
   }
 }
 
 export async function findUserByEmail(email: string) {
-  const user = await prisma.user.findUnique({ where: { email: email } });
+  const user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
-    throw new Error(`user with this email: ${email} does not exist`);
+    throw new Error(`User with email: ${email} does not exist`);
   }
   return user;
 }
 
-export async function getLoggedInUser(userId: number) {
+export async function getLoggedInUser(userId: string) {
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
       id: true,
       email: true,
-      username: true,
+      name: true,
       createdAt: true,
       updatedAt: true,
     },
   });
+
   if (!user) {
-    throw new Error("user not found");
+    throw new Error("User not found");
   }
+
   return user;
 }
